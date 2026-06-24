@@ -8,7 +8,7 @@ import telebot
 # CONFIG
 # =====================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-REMOVE_BG_API = os.getenv("REMOVE_BG_API")
+CLIPDROP_API_KEY = os.getenv("CLIPDROP_API_KEY")
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
