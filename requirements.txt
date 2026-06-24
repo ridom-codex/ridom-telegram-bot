@@ -1,4 +1,3 @@
 pyTelegramBotAPI
-rembg
+requests
 Pillow
-onnxruntime
