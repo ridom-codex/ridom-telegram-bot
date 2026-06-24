@@ -1,60 +1,34 @@
 import os
 import uuid
-import tempfile
-import logging
+import requests
 import telebot
-from rembg import remove
+from PIL import Image
+import tempfile
 
 # =====================
-# BOT TOKEN
+# CONFIG
 # =====================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+REMOVE_BG_API = os.getenv("REMOVE_BG_API")
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
-
-# =====================
-# LOGGING
-# =====================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-# =====================
-# STATS
-# =====================
-total_processed = 0
-users = set()
 
 # =====================
 # START
 # =====================
 @bot.message_handler(commands=["start"])
 def start(message):
-    users.add(message.from_user.id)
     bot.reply_to(
         message,
-        "👋 <b>Welcome!</b>\n\n📸 আমাকে ছবি পাঠাও\n🤖 আমি ব্যাকগ্রাউন্ড রিমুভ করে দিব"
+        "👋 Welcome!\n\n📸 আমাকে ছবি পাঠাও\n🤖 আমি background remove করে দিব"
     )
 
 # =====================
-# HELP
-# =====================
-@bot.message_handler(commands=["help"])
-def help_cmd(message):
-    bot.reply_to(
-        message,
-        "📌 শুধু ছবি পাঠাও\nআমি অটোমেটিক ব্যাকগ্রাউন্ড রিমুভ করব"
-    )
-
-# =====================
-# IMAGE PROCESS FUNCTION
+# PROCESS IMAGE (API)
 # =====================
 def process_image(message, file_id):
 
-    global total_processed
-
-    wait_msg = bot.reply_to(message, "⏳ প্রসেস করা হচ্ছে...")
+    wait = bot.reply_to(message, "⏳ প্রসেস করা হচ্ছে...")
 
     try:
         file_info = bot.get_file(file_id)
@@ -62,46 +36,49 @@ def process_image(message, file_id):
 
         uid = str(uuid.uuid4())
 
-        input_path = os.path.join(tempfile.gettempdir(), uid + ".png")
-        output_path = os.path.join(tempfile.gettempdir(), uid + "_out.png")
+        input_path = os.path.join(tempfile.gettempdir(), uid + ".jpg")
+        output_path = os.path.join(tempfile.gettempdir(), uid + ".png")
 
+        # save image
         with open(input_path, "wb") as f:
             f.write(file_bytes)
 
-        with open(input_path, "rb") as inp:
-            result = remove(inp.read())
+        # =====================
+        # CALL REMOVE.BG API
+        # =====================
+        response = requests.post(
+            "https://api.remove.bg/v1.0/removebg",
+            files={"image_file": open(input_path, "rb")},
+            data={"size": "auto"},
+            headers={"X-Api-Key": REMOVE_BG_API},
+        )
+
+        if response.status_code != 200:
+            bot.reply_to(message, "❌ API Error: Limit বা Key সমস্যা")
+            return
 
         with open(output_path, "wb") as out:
-            out.write(result)
+            out.write(response.content)
 
-        with open(output_path, "rb") as final:
+        # send result
+        with open(output_path, "rb") as photo:
             bot.send_document(
                 message.chat.id,
-                final,
-                caption="✅ ব্যাকগ্রাউন্ড রিমুভ করা হয়েছে"
+                photo,
+                caption="✅ Background removed successfully"
             )
 
-        total_processed += 1
-
     except Exception as e:
-        logging.error(e)
         bot.reply_to(message, f"❌ Error: {e}")
 
     finally:
         try:
-            bot.delete_message(message.chat.id, wait_msg.message_id)
+            bot.delete_message(message.chat.id, wait.message_id)
         except:
             pass
 
-        for file in [input_path, output_path]:
-            try:
-                if os.path.exists(file):
-                    os.remove(file)
-            except:
-                pass
-
 # =====================
-# PHOTO HANDLER
+# PHOTO
 # =====================
 @bot.message_handler(content_types=["photo"])
 def photo(message):
@@ -109,7 +86,7 @@ def photo(message):
     process_image(message, file_id)
 
 # =====================
-# DOCUMENT HANDLER
+# DOCUMENT
 # =====================
 @bot.message_handler(content_types=["document"])
 def doc(message):
@@ -119,15 +96,7 @@ def doc(message):
         bot.reply_to(message, "❌ শুধু ছবি পাঠাও")
 
 # =====================
-# DEFAULT
+# RUN
 # =====================
-@bot.message_handler(func=lambda m: True)
-def default(message):
-    bot.reply_to(message, "📸 শুধু একটি ছবি পাঠাও")
-
-# =====================
-# START BOT
-# =====================
-print("Bot is running...")
-
+print("Bot running...")
 bot.infinity_polling(skip_pending=True)
