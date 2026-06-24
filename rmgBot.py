@@ -19,17 +19,7 @@ bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 def start(message):
     bot.reply_to(
         message,
-        "👋 <b>Welcome!</b>\n\n📸 ছবি পাঠাও\n🤖 আমি background remove করে দিব"
-    )
-
-# =====================
-# HELP
-# =====================
-@bot.message_handler(commands=["help"])
-def help_cmd(message):
-    bot.reply_to(
-        message,
-        "📌 শুধু ছবি পাঠাও\nআমি অটোমেটিক background remove করে দিব"
+        "👋 <b>Welcome!</b>\n\n📸 ছবি পাঠাও\n🤖 আমি background remove করে দিব (Clipdrop API)"
     )
 
 # =====================
@@ -43,26 +33,26 @@ def process_image(message, file_id):
     output_path = None
 
     try:
+        # get image from telegram
         file_info = bot.get_file(file_id)
         file_bytes = bot.download_file(file_info.file_path)
 
         uid = str(uuid.uuid4())
         input_path = os.path.join(tempfile.gettempdir(), uid + ".jpg")
-        output_path = os.path.join(tempfile.gettempdir(), uid + ".png")
+        output_path = os.path.join(tempfile.gettempdir(), uid + "_out.png")
 
-        # save image
+        # save input image
         with open(input_path, "wb") as f:
             f.write(file_bytes)
 
         # =====================
-        # API CALL (SAFE VERSION)
+        # CLIPDROP API CALL
         # =====================
-        with open(input_path, "rb") as img_file:
+        with open(input_path, "rb") as img:
             response = requests.post(
-                "https://api.remove.bg/v1.0/removebg",
-                files={"image_file": img_file},
-                data={"size": "auto"},
-                headers={"X-Api-Key": REMOVE_BG_API},
+                "https://clipdrop-api.co/remove-background/v1",
+                files={"image_file": img},
+                headers={"x-api-key": CLIPDROP_API_KEY},
                 timeout=60
             )
 
@@ -74,7 +64,7 @@ def process_image(message, file_id):
             )
             return
 
-        # save output
+        # save result
         with open(output_path, "wb") as out:
             out.write(response.content)
 
@@ -83,7 +73,7 @@ def process_image(message, file_id):
             bot.send_document(
                 message.chat.id,
                 photo,
-                caption="✅ Background সফলভাবে remove করা হয়েছে"
+                caption="✅ Background সফলভাবে remove করা হয়েছে (Clipdrop)"
             )
 
     except Exception as e:
