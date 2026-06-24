@@ -1,79 +1,55 @@
 import os
 import uuid
 import tempfile
-import requests
 import telebot
+from rembg import remove
+from PIL import Image
 
-# =====================
-# CONFIG
-# =====================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CLIPDROP_API_KEY = os.getenv("CLIPDROP_API_KEY")
-
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+bot = telebot.TeleBot(BOT_TOKEN)
 
 # =====================
-# START
-# =====================
-@bot.message_handler(commands=["start"])
-def start(message):
-    bot.reply_to(
-        message,
-        "👋 <b>Welcome!</b>\n\n📸 ছবি পাঠাও\n🤖 আমি background remove করে দিব (Clipdrop API)"
-    )
-
-# =====================
-# PROCESS IMAGE
+# PROCESS IMAGE (FIXED)
 # =====================
 def process_image(message, file_id):
 
-    wait_msg = bot.reply_to(message, "⏳ প্রসেস করা হচ্ছে...")
+    wait = bot.reply_to(message, "⏳ Processing...")
 
     input_path = None
     output_path = None
 
     try:
-        # get image from telegram
         file_info = bot.get_file(file_id)
         file_bytes = bot.download_file(file_info.file_path)
 
         uid = str(uuid.uuid4())
         input_path = os.path.join(tempfile.gettempdir(), uid + ".jpg")
-        output_path = os.path.join(tempfile.gettempdir(), uid + "_out.png")
+        output_path = os.path.join(tempfile.gettempdir(), uid + ".png")
 
-        # save input image
+        # save file
         with open(input_path, "wb") as f:
             f.write(file_bytes)
 
         # =====================
-        # CLIPDROP API CALL
+        # 🔥 MEMORY SAFE FIX
         # =====================
-        with open(input_path, "rb") as img:
-            response = requests.post(
-                "https://clipdrop-api.co/remove-background/v1",
-                files={"image_file": img},
-                headers={"x-api-key": CLIPDROP_API_KEY},
-                timeout=60
-            )
+        img = Image.open(input_path).convert("RGBA")
 
-        # error check
-        if response.status_code != 200:
-            bot.reply_to(
-                message,
-                f"❌ API Error:\n{response.text}"
-            )
-            return
+        # reduce size (VERY IMPORTANT)
+        img.thumbnail((600, 600))
 
-        # save result
-        with open(output_path, "wb") as out:
-            out.write(response.content)
+        # background remove
+        result = remove(img)
+
+        # save output
+        result.save(output_path)
 
         # send result
-        with open(output_path, "rb") as photo:
+        with open(output_path, "rb") as out:
             bot.send_document(
                 message.chat.id,
-                photo,
-                caption="✅ Background সফলভাবে remove করা হয়েছে (Clipdrop)"
+                out,
+                caption="✅ Background removed successfully"
             )
 
     except Exception as e:
@@ -81,45 +57,22 @@ def process_image(message, file_id):
 
     finally:
         try:
-            bot.delete_message(message.chat.id, wait_msg.message_id)
+            bot.delete_message(message.chat.id, wait.message_id)
         except:
             pass
 
-        for file in [input_path, output_path]:
+        for f in [input_path, output_path]:
             try:
-                if file and os.path.exists(file):
-                    os.remove(file)
+                if f and os.path.exists(f):
+                    os.remove(f)
             except:
                 pass
 
-# =====================
-# PHOTO HANDLER
-# =====================
+
 @bot.message_handler(content_types=["photo"])
 def photo(message):
     file_id = message.photo[-1].file_id
     process_image(message, file_id)
 
-# =====================
-# DOCUMENT HANDLER
-# =====================
-@bot.message_handler(content_types=["document"])
-def doc(message):
-    if message.document.mime_type and message.document.mime_type.startswith("image/"):
-        process_image(message, message.document.file_id)
-    else:
-        bot.reply_to(message, "❌ শুধু ছবি পাঠাও")
-
-# =====================
-# DEFAULT
-# =====================
-@bot.message_handler(func=lambda m: True)
-def default(message):
-    bot.reply_to(message, "📸 শুধু একটি ছবি পাঠাও")
-
-# =====================
-# RUN BOT
-# =====================
-print("Bot is running...")
-
+print("Bot running...")
 bot.infinity_polling(skip_pending=True)
