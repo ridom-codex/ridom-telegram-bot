@@ -5,15 +5,28 @@ import telebot
 from rembg import remove
 from PIL import Image
 
+# =====================
+# BOT TOKEN
+# =====================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # =====================
-# PROCESS IMAGE (FIXED)
+# START
+# =====================
+@bot.message_handler(commands=["start"])
+def start(message):
+    bot.reply_to(
+        message,
+        "👋 Welcome!\n\n📸 ছবি পাঠাও\n🤖 আমি background remove করে দিব"
+    )
+
+# =====================
+# PROCESS IMAGE
 # =====================
 def process_image(message, file_id):
 
-    wait = bot.reply_to(message, "⏳ Processing...")
+    wait_msg = bot.reply_to(message, "⏳ Processing...")
 
     input_path = None
     output_path = None
@@ -26,22 +39,19 @@ def process_image(message, file_id):
         input_path = os.path.join(tempfile.gettempdir(), uid + ".jpg")
         output_path = os.path.join(tempfile.gettempdir(), uid + ".png")
 
-        # save file
+        # save input
         with open(input_path, "wb") as f:
             f.write(file_bytes)
 
         # =====================
-        # 🔥 MEMORY SAFE FIX
+        # SAFE IMAGE PROCESS
         # =====================
         img = Image.open(input_path).convert("RGBA")
 
-        # reduce size (VERY IMPORTANT)
+        # memory safe resize
         img.thumbnail((600, 600))
 
-        # background remove
         result = remove(img)
-
-        # save output
         result.save(output_path)
 
         # send result
@@ -57,7 +67,7 @@ def process_image(message, file_id):
 
     finally:
         try:
-            bot.delete_message(message.chat.id, wait.message_id)
+            bot.delete_message(message.chat.id, wait_msg.message_id)
         except:
             pass
 
@@ -68,11 +78,27 @@ def process_image(message, file_id):
             except:
                 pass
 
-
+# =====================
+# PHOTO HANDLER
+# =====================
 @bot.message_handler(content_types=["photo"])
 def photo(message):
     file_id = message.photo[-1].file_id
     process_image(message, file_id)
 
+# =====================
+# DOCUMENT HANDLER
+# =====================
+@bot.message_handler(content_types=["document"])
+def doc(message):
+    if message.document.mime_type and message.document.mime_type.startswith("image/"):
+        process_image(message, message.document.file_id)
+    else:
+        bot.reply_to(message, "❌ শুধু ছবি পাঠাও")
+
+# =====================
+# RUN BOT (NO PORT NEEDED)
+# =====================
 print("Bot running...")
+
 bot.infinity_polling(skip_pending=True)
